@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Tactical Client Test</title>
+</head>
+
+<body style="background: #111; color: #33ff00; font-family: monospace;">
+    <h2>COMM LINK ESTABLISHED</h2>
+    <button onclick="sendMove()"
+        style="padding: 10px; background: #33ff00; border: none; cursor: pointer; font-weight: bold;">TRANSMIT TANK
+        MOVE</button>
+    <ul id="messages"></ul>
+
+    <script>
+        // Connect to our new Python server
+        var ws = new WebSocket("ws://localhost:8000/ws/match");
+
+        // Listen for broadcasts
+        ws.onmessage = function (event) {
+            var messages = document.getElementById('messages');
+            var message = document.createElement('li');
+            var content = document.createTextNode("Received via Satellite: " + event.data);
+            message.appendChild(content);
+            messages.appendChild(message);
+        };
+
+        // Send a fake move
+        function sendMove() {
+            var fakeGameData = JSON.stringify({ action: "MOVE", unit: "TNK", x: 5, y: 10 });
+            ws.send(fakeGameData);
+        }
+    </script>
+</body>
+
+</html>
