@@ -8,7 +8,7 @@ app = FastAPI()
 # --- 1. THE GAME ROOM MANAGER ---
 class ConnectionManager:
     def __init__(self):
-        # We upgraded this to a Dictionary to hold multiple isolated rooms!
+        # upgraded to a Dictionary to hold multiple isolated rooms
         self.rooms: Dict[str, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, room_id: str):
@@ -33,6 +33,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# --- THE GAME ROOM ENDPOINT ---
 @app.websocket("/ws/match/{room_id}")
 async def match_endpoint(websocket: WebSocket, room_id: str):
     await manager.connect(websocket, room_id)
@@ -42,6 +43,9 @@ async def match_endpoint(websocket: WebSocket, room_id: str):
             await manager.broadcast(data, room_id)
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
+        # NEW: Broadcast the drop-out to the remaining players in the ACTIVE ROOM!
+        disconnect_msg = json.dumps({"action": "PLAYER_LEFT"})
+        await manager.broadcast(disconnect_msg, room_id)
 
 
 # --- 2. THE PUBLIC MATCHMAKER ---
@@ -73,6 +77,7 @@ class Matchmaker:
 
 matchmaker = Matchmaker()
 
+# --- THE MATCHMAKER ENDPOINT ---
 @app.websocket("/ws/matchmake")
 async def matchmake_endpoint(websocket: WebSocket):
     await matchmaker.search(websocket)
@@ -80,5 +85,6 @@ async def matchmake_endpoint(websocket: WebSocket):
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
+        # If a player leaves while searching for a match, just remove them from the queue
         if websocket in matchmaker.queue:
             matchmaker.queue.remove(websocket)
