@@ -1,14 +1,13 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import List, Dict
 import json
-import uuid
 
 app = FastAPI()
 
 # --- 1. THE GAME ROOM MANAGER ---
 class ConnectionManager:
     def __init__(self):
-        # upgraded to a Dictionary to hold multiple isolated rooms
+        # A Dictionary to hold multiple isolated private rooms
         self.rooms: Dict[str, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, room_id: str):
@@ -23,7 +22,7 @@ class ConnectionManager:
         if room_id in self.rooms:
             self.rooms[room_id].remove(websocket)
             if len(self.rooms[room_id]) == 0:
-                del self.rooms[room_id] # Clean up empty rooms
+                del self.rooms[room_id]  # Clean up empty rooms from memory
 
     async def broadcast(self, message: str, room_id: str):
         # Only broadcast moves to players in this EXACT room
@@ -43,48 +42,6 @@ async def match_endpoint(websocket: WebSocket, room_id: str):
             await manager.broadcast(data, room_id)
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
-        # NEW: Broadcast the drop-out to the remaining players in the ACTIVE ROOM!
+        # Broadcast the drop-out to the remaining players in the ACTIVE ROOM!
         disconnect_msg = json.dumps({"action": "PLAYER_LEFT"})
         await manager.broadcast(disconnect_msg, room_id)
-
-
-# --- 2. THE PUBLIC MATCHMAKER ---
-class Matchmaker:
-    def __init__(self):
-        self.queue: List[WebSocket] = []
-
-    async def search(self, websocket: WebSocket):
-        await websocket.accept()
-        self.queue.append(websocket)
-        print(f"SYS_LOG: Player entered public queue. Waiting: {len(self.queue)}")
-
-        # If 2 players are waiting, pair them up!
-        if len(self.queue) >= 2:
-            p1 = self.queue.pop(0)
-            p2 = self.queue.pop(0)
-            
-            # Generate a secure, random 6-character room code
-            room_id = f"PUB-{uuid.uuid4().hex[:6].upper()}"
-            
-            # Send the code to both players
-            payload = json.dumps({"action": "MATCH_FOUND", "room_id": room_id})
-            await p1.send_text(payload)
-            await p2.send_text(payload)
-            
-            # Boot them from the queue so React can connect them to the real room
-            await p1.close()
-            await p2.close()
-
-matchmaker = Matchmaker()
-
-# --- THE MATCHMAKER ENDPOINT ---
-@app.websocket("/ws/matchmake")
-async def matchmake_endpoint(websocket: WebSocket):
-    await matchmaker.search(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        # If a player leaves while searching for a match, just remove them from the queue
-        if websocket in matchmaker.queue:
-            matchmaker.queue.remove(websocket)
